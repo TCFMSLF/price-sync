@@ -20,6 +20,7 @@ def test_create_product(db_session: Session):
     )
     db_session.add(product)
     db_session.commit()
+    db_session.expire_all()
 
     loaded = db_session.get(Product, "SKU-001")
     assert loaded is not None
@@ -91,6 +92,7 @@ def test_outbox_defaults(db_session: Session):
     event = make_outbox_event()
     db_session.add(event)
     db_session.commit()
+    db_session.expire_all()
 
     loaded = db_session.get(OutboxEvent, event.id)
     assert loaded is not None
@@ -107,6 +109,7 @@ def test_outbox_payload_roundtrip(db_session: Session):
     event = make_outbox_event(payload=payload)
     db_session.add(event)
     db_session.commit()
+    db_session.expire_all()
 
     loaded = db_session.get(OutboxEvent, event.id)
     assert loaded is not None
@@ -119,6 +122,7 @@ def test_unpublished_outbox_query(db_session: Session):
     published = make_outbox_event(created_at=now, published_at=now)
     db_session.add_all([unpublished, published])
     db_session.commit()
+    db_session.expire_all()
 
     result = db_session.scalars(select(OutboxEvent).where(OutboxEvent.published_at.is_(None))).all()
     assert [event.id for event in result] == [unpublished.id]
