@@ -3,7 +3,9 @@ name = "erp-sim"
 version = "0.1.0"
 description = "Имитация ERP с transactional outbox"
 requires-python = ">=3.12,<3.13"
-dependencies = []
+dependencies = [
+    "pydantic>=2.14.3",
+]
 
 [build-system]
 requires = ["hatchling"]
