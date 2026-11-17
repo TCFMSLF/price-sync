@@ -5,24 +5,29 @@ from confluent_kafka import Producer
 
 
 def send_test_event(
-    product_id: str = "SM-10045",
-    old_price: float = 4999.0,
-    new_price: float = 4299.0,
-    duplicate_id: str | None = None,
+    product_id: str = "SKU-001",
+    old_price: str = "1999.00",
+    new_price: str = "1799.00",
+    price_version: int = 1,
+    duplicate_event_id: str | None = None,
 ) -> str:
     producer = Producer({"bootstrap.servers": "localhost:9092"})
-    event_id = duplicate_id or str(uuid.uuid4())
+    event_id = duplicate_event_id or str(uuid.uuid4())
+    correlation_id = str(uuid.uuid4())
 
     event = {
-        "event_id": event_id,
-        "event_type": "PriceUpdated",
-        "event_version": 1,
-        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "eventId": event_id,
+        "eventType": "price.changed",
+        "schemaVersion": 1,
+        "occurredAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "correlationId": correlation_id,
+        "source": "erp-sim",
         "payload": {
-            "product_id": product_id,
-            "old_price": old_price,
-            "new_price": new_price,
+            "productId": product_id,
+            "oldPrice": old_price,
+            "newPrice": new_price,
             "currency": "RUB",
+            "priceVersion": price_version,
         },
     }
 
@@ -32,10 +37,17 @@ def send_test_event(
         value=json.dumps(event).encode("utf-8"),
     )
     producer.flush()
-    print(f"Отправлено событие: event_id={event_id}, product={product_id}, new_price={new_price}")
+    print(
+        f"Отправлено: eventId={event_id}, productId={product_id}, "
+        f"newPrice={new_price}, priceVersion={price_version}"
+    )
     return event_id
 
 
 if __name__ == "__main__":
-    eid = send_test_event(product_id="SM-10045", old_price=4999.0, new_price=4299.0)
-    send_test_event(product_id="SM-10045", old_price=4999.0, new_price=4299.0, duplicate_id=eid)
+    # Отправляем обновления по 3 демо-товарам (попадут в 3 партиции по ключу productId)
+    eid1 = send_test_event("SKU-001", old_price="1999.00", new_price="1799.00", price_version=1)
+    send_test_event("SKU-002", old_price="3490.00", new_price="2990.00", price_version=1)
+    send_test_event("SKU-003", old_price="5990.00", new_price="5490.00", price_version=1)
+    # И дубликат первого события для проверки дедупликации
+    send_test_event("SKU-001", old_price="1999.00", new_price="1799.00", price_version=1, duplicate_event_id=eid1)

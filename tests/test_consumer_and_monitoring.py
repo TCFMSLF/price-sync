@@ -1,8 +1,10 @@
 import json
+import uuid
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from src.catalog_adapter import CatalogAdapter, SQLiteCatalogAdapter
 from src.consumer import process_message
-from src.models import PriceUpdatedEvent
+from src.models import PriceChangedEvent
 from src.monitoring import AlertConfig, PriceSyncMonitor
 
 
@@ -37,7 +39,7 @@ class FakeConsumer:
 
 
 class FailingCatalogAdapter(CatalogAdapter):
-    def apply_price_update(self, event: PriceUpdatedEvent) -> bool:
+    def apply_price_update(self, event: PriceChangedEvent) -> bool:
         raise RuntimeError("БД временно недоступна")
 
     def get_product(self, product_id: str) -> dict | None:
@@ -47,15 +49,18 @@ class FailingCatalogAdapter(CatalogAdapter):
 def make_raw_event(event_id: str = "evt-100", latency_ms: float = 10.0) -> dict:
     occurred_at = datetime.now(timezone.utc) - timedelta(milliseconds=latency_ms)
     return {
-        "event_id": event_id,
-        "event_type": "PriceUpdated",
-        "event_version": 1,
-        "occurred_at": occurred_at.isoformat(),
+        "eventId": event_id,
+        "eventType": "price.changed",
+        "schemaVersion": 1,
+        "occurredAt": occurred_at.isoformat().replace("+00:00", "Z"),
+        "correlationId": str(uuid.uuid4()),
+        "source": "erp-sim",
         "payload": {
-            "product_id": "SM-777",
-            "old_price": 3000.0,
-            "new_price": 2500.0,
+            "productId": "SKU-002",
+            "oldPrice": "3490.00",
+            "newPrice": "2990.00",
             "currency": "RUB",
+            "priceVersion": 1,
         },
     }
 
@@ -70,7 +75,7 @@ def test_process_message_commits_after_db_success(tmp_path):
 
     assert ok is True
     assert consumer.committed_offsets == [10]
-    assert adapter.get_product("SM-777")["price"] == 2500.0
+    assert adapter.get_product("SKU-002")["price"] == Decimal("2990.00")
     assert monitor.stats.processed_count == 1
     assert monitor.stats.last_consumer_lag == 0
 
@@ -84,7 +89,6 @@ def test_process_message_does_not_commit_on_db_failure():
     ok = process_message(msg, adapter, consumer, monitor)
 
     assert ok is False
-    # Offset НЕ должен быть подтверждён при сбое БД!
     assert consumer.committed_offsets == []
     assert monitor.stats.errors_count == 1
 
@@ -95,9 +99,7 @@ def test_monitoring_alerts_on_high_latency_and_lag(tmp_path):
     monitor = PriceSyncMonitor(config=config, notifier=received_alerts.append)
 
     adapter = SQLiteCatalogAdapter(str(tmp_path / "catalog.db"))
-    # high_watermark=20 при текущем offset=10 даёт lag = 20 - 10 - 1 = 9 (> порога 5)
     consumer = FakeConsumer(high_watermark=20)
-    # Задержка 350 мс (> порога 200 мс)
     msg = FakeMessage(make_raw_event("evt-slow", latency_ms=350.0), offset=10)
 
     ok = process_message(msg, adapter, consumer, monitor)

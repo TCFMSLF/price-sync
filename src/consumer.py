@@ -1,9 +1,10 @@
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from confluent_kafka import Consumer, KafkaError, TopicPartition
-from .catalog_adapter import CatalogAdapter, SQLiteCatalogAdapter
-from .models import PriceUpdatedEvent
+from .catalog_adapter import CatalogAdapter, PostgresCatalogAdapter
+from .models import PriceChangedEvent
 from .monitoring import PriceSyncMonitor
 
 logging.basicConfig(
@@ -35,22 +36,22 @@ def process_message(
 ) -> bool:
     """
     Обрабатывает одно сообщение из Kafka:
-    1) Валидирует JSON
-    2) Обновляет цену в каталоге (с дедупликацией)
-    3) Подтверждает offset только после успеха БД
+    1) Валидирует JSON по контракту price.changed
+    2) Идемпотентно обновляет цену в каталоге (с дедупликацией по eventId)
+    3) Подтверждает offset только после успеха транзакции в БД
     4) Фиксирует latency и consumer lag
     """
     try:
         raw_data = json.loads(msg.value().decode("utf-8"))
-        event = PriceUpdatedEvent.model_validate(raw_data)
+        event = PriceChangedEvent.model_validate(raw_data)
 
         applied = adapter.apply_price_update(event)
 
-        # Подтверждаем offset строго после успешной транзакции в БД
+        # Ручной commit offset строго после успешной фиксации изменений в БД
         consumer.commit(message=msg, asynchronous=False)
 
         latency_ms = (
-            datetime.now(timezone.utc) - event.occurred_at
+            datetime.now(timezone.utc) - event.occurredAt
         ).total_seconds() * 1000
         consumer_lag = calculate_consumer_lag(consumer, msg)
 
@@ -62,23 +63,24 @@ def process_message(
 
         if applied:
             logger.info(
-                "Цена обновлена: product=%s new_price=%.2f %s | latency=%.1f ms | lag=%d",
-                event.payload.product_id,
-                event.payload.new_price,
+                "Цена обновлена: product=%s new_price=%.2f %s (v%d) | latency=%.1f ms | lag=%d | corr=%s",
+                event.payload.productId,
+                event.payload.newPrice,
                 event.payload.currency,
+                event.payload.priceVersion,
                 latency_ms,
                 consumer_lag,
+                event.correlationId,
             )
         else:
             logger.warning(
-                "Дубликат события пропущен: event_id=%s | lag=%d",
-                event.event_id,
+                "Дубликат события пропущен: eventId=%s | lag=%d",
+                event.eventId,
                 consumer_lag,
             )
         return True
 
     except Exception as exc:
-        # Offset НЕ подтверждается — при перезапуске/ребалансировке сообщение придёт снова
         monitor.record_error()
         logger.exception("Ошибка обработки сообщения (offset не подтверждён): %s", exc)
         return False
@@ -93,25 +95,30 @@ def on_revoke(_consumer, partitions) -> None:
 
 
 def run_consumer(
-    bootstrap_servers: str = "localhost:9092",
+    bootstrap_servers: str | None = None,
     topic: str = "price-updates",
-    group_id: str = "catalog-price-updaters",
+    group_id: str = "catalog-price-sync",
     adapter: CatalogAdapter | None = None,
     monitor: PriceSyncMonitor | None = None,
 ) -> None:
-    adapter = adapter or SQLiteCatalogAdapter()
+    bootstrap_servers = bootstrap_servers or os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    adapter = adapter or PostgresCatalogAdapter()
     monitor = monitor or PriceSyncMonitor()
 
     conf = {
         "bootstrap.servers": bootstrap_servers,
         "group.id": group_id,
         "auto.offset.reset": "earliest",
-        "enable.auto.commit": False,  # Ручной commit offset (п. 5.2)
+        "enable.auto.commit": False,  # Ручной commit offset только после БД
     }
 
     consumer = Consumer(conf)
     consumer.subscribe([topic], on_assign=on_assign, on_revoke=on_revoke)
-    logger.info("Consumer запущен. Ожидание сообщений из топика '%s'...", topic)
+    logger.info(
+        "Consumer запущен (group=%s). Ожидание сообщений из топика '%s'...",
+        group_id,
+        topic,
+    )
 
     try:
         while True:
