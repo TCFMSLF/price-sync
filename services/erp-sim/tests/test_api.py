@@ -10,6 +10,15 @@ from sqlalchemy.orm import Session
 pytestmark = pytest.mark.integration
 
 
+def assert_product_unchanged(db_session: Session) -> None:
+    db_session.expire_all()
+    product = db_session.get(Product, "SKU-001")
+    assert product is not None
+    assert product.price == Decimal("1299.00")
+    assert product.price_version == 1
+    assert db_session.scalar(select(OutboxEvent)) is None
+
+
 def test_update_price_returns_new_version(
     api_client: TestClient, db_session: Session, sample_product: Product
 ):
@@ -85,15 +94,16 @@ def test_update_price_rejects_same_price(api_client: TestClient, sample_product:
     ],
 )
 def test_update_price_rejects_invalid_payload(
-    api_client: TestClient, sample_product: Product, payload: dict
+    api_client: TestClient, db_session: Session, sample_product: Product, payload: dict
 ):
     response = api_client.patch("/products/SKU-001/price", json=payload)
 
     assert response.status_code == 422
+    assert_product_unchanged(db_session)
 
 
 def test_update_price_rejects_invalid_correlation_header(
-    api_client: TestClient, sample_product: Product
+    api_client: TestClient, db_session: Session, sample_product: Product
 ):
     response = api_client.patch(
         "/products/SKU-001/price",
@@ -102,6 +112,7 @@ def test_update_price_rejects_invalid_correlation_header(
     )
 
     assert response.status_code == 422
+    assert_product_unchanged(db_session)
 
 
 def test_update_price_generates_correlation_id(

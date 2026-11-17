@@ -42,12 +42,21 @@ def change_price(
     expected_version: int,
     correlation_id: UUID,
 ) -> PriceChangeResult:
-    product = session.scalar(select(Product).where(Product.id == product_id).with_for_update())
+    product = session.scalar(
+        select(Product)
+        .where(Product.id == product_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     if product is None:
+        session.rollback()
         raise ProductNotFoundError(product_id)
     if product.price_version != expected_version:
-        raise PriceVersionConflictError(product.price_version)
+        current_version = product.price_version
+        session.rollback()
+        raise PriceVersionConflictError(current_version)
     if product.price == new_price:
+        session.rollback()
         raise PriceUnchangedError(product_id)
 
     occurred_at = datetime.now(UTC)
