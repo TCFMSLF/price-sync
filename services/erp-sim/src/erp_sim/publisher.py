@@ -178,6 +178,8 @@ def main() -> None:
                     batch_size=settings.outbox_batch_size,
                 )
             logger.info("outbox: published=%d failed=%d", result.published, result.failed)
+            if result.failed:
+                raise SystemExit(1)
             return
         run_forever(publisher)
     finally:

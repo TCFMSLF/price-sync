@@ -162,3 +162,56 @@ def test_publish_pending_rolls_back_on_commit_failure(
     assert stored is not None
     assert stored.published_at is None
     assert stored.attempts == 0
+
+
+def test_publish_pending_marks_only_successful_events(db_session: Session, sample_product: Product):
+    first = create_event(db_session)
+    second = create_event(db_session, new_price="1099.00", expected_version=2)
+    publisher = FakePublisher(errors={second.id: "kafka unavailable"})
+
+    result = publish_pending(db_session, publisher, batch_size=10)
+
+    assert result == PublishResult(published=1, failed=1)
+    first_stored = db_session.get(OutboxEvent, first.id)
+    second_stored = db_session.get(OutboxEvent, second.id)
+    assert first_stored is not None
+    assert second_stored is not None
+    assert first_stored.published_at is not None
+    assert first_stored.attempts == 0
+    assert first_stored.last_error is None
+    assert second_stored.published_at is None
+    assert second_stored.attempts == 1
+    assert second_stored.last_error == "kafka unavailable"
+
+
+class SilentProducer:
+    def __init__(self) -> None:
+        self.produced: list[dict] = []
+
+    def produce(self, **kwargs) -> None:
+        self.produced.append(kwargs)
+
+    def poll(self, timeout: float) -> int:
+        return 0
+
+    def flush(self, timeout: float) -> int:
+        return 0
+
+
+def test_publish_pending_records_kafka_delivery_timeout(
+    db_session: Session, sample_product: Product
+):
+    from erp_sim.publisher import KafkaEventPublisher
+
+    event = create_event(db_session)
+    producer = SilentProducer()
+    publisher = KafkaEventPublisher(producer, "price-updates")
+
+    result = publish_pending(db_session, publisher, batch_size=10)
+
+    assert result == PublishResult(published=0, failed=1)
+    stored = db_session.get(OutboxEvent, event.id)
+    assert stored is not None
+    assert stored.published_at is None
+    assert stored.attempts == 1
+    assert stored.last_error == "delivery timed out"

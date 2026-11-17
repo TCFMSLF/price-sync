@@ -60,6 +60,10 @@ def test_publisher_sends_event_to_kafka(
         assert json.loads(message.value()) == event.payload
         headers = {key: value for key, value in (message.headers() or [])}
         assert headers["eventId"] == str(event.id).encode()
+        assert headers["eventType"] == b"price.changed"
+        assert headers["schemaVersion"] == b"1"
+        assert headers["correlationId"] == str(event.payload["correlationId"]).encode()
+        assert headers["content-type"] == b"application/json"
     finally:
         consumer.close()
 
