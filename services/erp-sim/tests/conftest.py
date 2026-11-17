@@ -3,6 +3,7 @@ from collections.abc import Iterator
 from decimal import Decimal
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -42,13 +43,33 @@ def db_engine() -> Iterator[Engine]:
 
 
 @pytest.fixture()
-def db_session(db_engine: Engine) -> Iterator[Session]:
-    session_factory = sessionmaker(bind=db_engine, expire_on_commit=False)
+def session_factory(db_engine: Engine) -> sessionmaker:
+    return sessionmaker(bind=db_engine, expire_on_commit=False)
+
+
+@pytest.fixture()
+def db_session(session_factory: sessionmaker, db_engine: Engine) -> Iterator[Session]:
     with session_factory() as session:
         yield session
         session.rollback()
     with db_engine.begin() as connection:
         connection.execute(text("TRUNCATE TABLE outbox, products"))
+
+
+@pytest.fixture()
+def api_client(session_factory: sessionmaker) -> Iterator[TestClient]:
+    from erp_sim.api import app, get_session
+
+    def override_get_session() -> Iterator[Session]:
+        with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    client = TestClient(app)
+    try:
+        yield client
+    finally:
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture()
