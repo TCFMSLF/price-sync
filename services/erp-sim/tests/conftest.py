@@ -1,5 +1,6 @@
 import os
 from collections.abc import Iterator
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -8,6 +9,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 TEST_DATABASE_URL = "postgresql+psycopg://price_sync:price_sync@localhost:5433/erp_test"
 ADMIN_DATABASE_URL = "postgresql+psycopg://price_sync:price_sync@localhost:5433/postgres"
+
+os.environ.setdefault("ERP_DATABASE_URL", TEST_DATABASE_URL)
 
 
 def _ensure_test_database() -> None:
@@ -46,3 +49,18 @@ def db_session(db_engine: Engine) -> Iterator[Session]:
         session.rollback()
     with db_engine.begin() as connection:
         connection.execute(text("TRUNCATE TABLE outbox, products"))
+
+
+@pytest.fixture()
+def sample_product(db_session: Session):
+    from erp_sim.models import Product
+
+    product = Product(
+        id="SKU-001",
+        name="Кофе в зернах, 1 кг",
+        price=Decimal("1299.00"),
+        currency="RUB",
+    )
+    db_session.add(product)
+    db_session.commit()
+    return product
