@@ -1,0 +1,4 @@
+confluent-kafka==2.16.1
+pydantic==2.14.3
+psycopg[binary]==3.3.9
+pytest==9.2.0
