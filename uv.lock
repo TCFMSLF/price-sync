@@ -53,6 +53,26 @@ wheels = [
 name = "catalog"
 version = "0.1.0"
 source = { editable = "services/catalog" }
+dependencies = [
+    { name = "confluent-kafka" },
+    { name = "fastapi" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "sqlalchemy" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "confluent-kafka", specifier = ">=2.16.1" },
+    { name = "fastapi", specifier = ">=0.163.1" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.9" },
+    { name = "pydantic", specifier = ">=2.14.3" },
+    { name = "pydantic-settings", specifier = ">=2.16.3" },
+    { name = "sqlalchemy", specifier = ">=2.1.8" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.54.0" },
+]
 
 [[package]]
 name = "certifi"
