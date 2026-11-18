@@ -1,7 +1,7 @@
-from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 import json
 import uuid
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from src.catalog_adapter import CatalogAdapter, SQLiteCatalogAdapter
 from src.consumer import process_message

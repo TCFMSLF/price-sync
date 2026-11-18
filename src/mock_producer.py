@@ -1,6 +1,6 @@
-from datetime import UTC, datetime
 import json
 import uuid
+from datetime import UTC, datetime
 
 from confluent_kafka import Producer
 

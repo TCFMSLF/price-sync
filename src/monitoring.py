@@ -1,9 +1,9 @@
-from collections.abc import Callable
-from dataclasses import dataclass, field
 import json
 import logging
 import os
 import urllib.request
+from collections.abc import Callable
+from dataclasses import dataclass, field
 
 logger = logging.getLogger("price-monitoring")
 

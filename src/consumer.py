@@ -1,7 +1,7 @@
-from datetime import UTC, datetime
 import json
 import logging
 import os
+from datetime import UTC, datetime
 
 from confluent_kafka import Consumer, KafkaError, TopicPartition
 

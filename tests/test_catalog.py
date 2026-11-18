@@ -1,6 +1,6 @@
+import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-import uuid
 
 from src.catalog_adapter import SQLiteCatalogAdapter
 from src.models import PriceChangedEvent, PricePayload

@@ -1,8 +1,8 @@
+import os
+import sqlite3
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from decimal import Decimal
-import os
-import sqlite3
 
 import psycopg
 from psycopg.rows import dict_row
