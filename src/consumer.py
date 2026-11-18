@@ -3,11 +3,16 @@ import logging
 import os
 from datetime import UTC, datetime
 
-from confluent_kafka import Consumer, KafkaError, TopicPartition
-
 from .catalog_adapter import CatalogAdapter, PostgresCatalogAdapter
 from .models import PriceChangedEvent
 from .monitoring import PriceSyncMonitor
+
+try:
+    from confluent_kafka import Consumer, KafkaError, TopicPartition
+except ImportError:
+    Consumer = None
+    KafkaError = None
+    TopicPartition = None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,8 +21,10 @@ logging.basicConfig(
 logger = logging.getLogger("price-consumer")
 
 
-def calculate_consumer_lag(consumer: Consumer, msg) -> int:
+def calculate_consumer_lag(consumer, msg) -> int:
     """Вычисляет отставание consumer от конца партиции (consumer lag)."""
+    if TopicPartition is None:
+        return 0
     try:
         _, high = consumer.get_watermark_offsets(
             TopicPartition(msg.topic(), msg.partition()),
@@ -33,7 +40,7 @@ def calculate_consumer_lag(consumer: Consumer, msg) -> int:
 def process_message(
     msg,
     adapter: CatalogAdapter,
-    consumer: Consumer,
+    consumer,
     monitor: PriceSyncMonitor,
 ) -> bool:
     """
@@ -102,6 +109,9 @@ def run_consumer(
     adapter: CatalogAdapter | None = None,
     monitor: PriceSyncMonitor | None = None,
 ) -> None:
+    if Consumer is None:
+        raise RuntimeError("Для работы consumer требуется библиотека confluent-kafka")
+
     bootstrap_servers = bootstrap_servers or os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     adapter = adapter or PostgresCatalogAdapter()
     monitor = monitor or PriceSyncMonitor()
@@ -129,9 +139,9 @@ def run_consumer(
 
             if msg.error():
                 code = msg.error().code()
-                if code == KafkaError.UNKNOWN_TOPIC_OR_PART:
+                if KafkaError and code == KafkaError.UNKNOWN_TOPIC_OR_PART:
                     logger.info("Топик '%s' ещё не создан, ждём первое сообщение...", topic)
-                elif code != KafkaError._PARTITION_EOF:
+                elif KafkaError and code != KafkaError._PARTITION_EOF:
                     logger.error("Ошибка Kafka: %s", msg.error())
                 continue
 
