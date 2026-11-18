@@ -1,10 +1,12 @@
+from abc import ABC, abstractmethod
+from datetime import UTC, datetime
+from decimal import Decimal
 import os
 import sqlite3
-from abc import ABC, abstractmethod
-from datetime import datetime, timezone
-from decimal import Decimal
+
 import psycopg
 from psycopg.rows import dict_row
+
 from .models import PriceChangedEvent
 
 
@@ -28,7 +30,6 @@ class PostgresCatalogAdapter(CatalogAdapter):
             "DATABASE_URL",
             "postgresql://catalog:catalog@localhost:5432/catalog_db",
         )
-        # autocommit=True + self.conn.transaction() — безопасные явные транзакции в psycopg 3
         self.conn = psycopg.connect(self.dsn, row_factory=dict_row, autocommit=True)
         self._init_schema()
 
@@ -52,11 +53,10 @@ class PostgresCatalogAdapter(CatalogAdapter):
             """)
 
     def apply_price_update(self, event: PriceChangedEvent) -> bool:
-        now_dt = datetime.now(timezone.utc)
+        now_dt = datetime.now(UTC)
         p = event.payload
 
         with self.conn.transaction():
-            # 1. Дедупликация по eventId в одной транзакции с обновлением цены
             row = self.conn.execute(
                 """
                 INSERT INTO processed_events (event_id, processed_at)
@@ -70,7 +70,6 @@ class PostgresCatalogAdapter(CatalogAdapter):
             if row is None:
                 return False
 
-            # 2. Идемпотентное обновление цены с защитой по priceVersion и occurredAt
             self.conn.execute(
                 """
                 INSERT INTO products (
@@ -135,7 +134,7 @@ class SQLiteCatalogAdapter(CatalogAdapter):
             """)
 
     def apply_price_update(self, event: PriceChangedEvent) -> bool:
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         occurred_iso = event.occurredAt.isoformat()
         p = event.payload
 

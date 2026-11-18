@@ -1,6 +1,7 @@
+from datetime import UTC, datetime
 import json
 import uuid
-from datetime import datetime, timezone
+
 from confluent_kafka import Producer
 
 
@@ -19,7 +20,7 @@ def send_test_event(
         "eventId": event_id,
         "eventType": "price.changed",
         "schemaVersion": 1,
-        "occurredAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "occurredAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "correlationId": correlation_id,
         "source": "erp-sim",
         "payload": {
@@ -45,9 +46,13 @@ def send_test_event(
 
 
 if __name__ == "__main__":
-    # Отправляем обновления по 3 демо-товарам (попадут в 3 партиции по ключу productId)
     eid1 = send_test_event("SKU-001", old_price="1999.00", new_price="1799.00", price_version=1)
     send_test_event("SKU-002", old_price="3490.00", new_price="2990.00", price_version=1)
     send_test_event("SKU-003", old_price="5990.00", new_price="5490.00", price_version=1)
-    # И дубликат первого события для проверки дедупликации
-    send_test_event("SKU-001", old_price="1999.00", new_price="1799.00", price_version=1, duplicate_event_id=eid1)
+    send_test_event(
+        "SKU-001",
+        old_price="1999.00",
+        new_price="1799.00",
+        price_version=1,
+        duplicate_event_id=eid1,
+    )

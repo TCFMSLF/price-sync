@@ -1,6 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 import uuid
+
 from src.catalog_adapter import SQLiteCatalogAdapter
 from src.models import PriceChangedEvent, PricePayload
 
@@ -16,7 +17,7 @@ def make_event(
         eventId=event_id,
         eventType="price.changed",
         schemaVersion=1,
-        occurredAt=occurred_at or datetime.now(timezone.utc),
+        occurredAt=occurred_at or datetime.now(UTC),
         correlationId=str(uuid.uuid4()),
         source="erp-sim",
         payload=PricePayload(
@@ -50,14 +51,13 @@ def test_duplicate_event_is_ignored(tmp_path):
     assert adapter.apply_price_update(event_first) is True
     assert adapter.apply_price_update(event_duplicate) is False
 
-    # Цена должна остаться от первого события (1799.00)
     product = adapter.get_product("SKU-001")
     assert product["price"] == Decimal("1799.00")
 
 
 def test_stale_price_version_does_not_overwrite_newer_price(tmp_path):
     adapter = SQLiteCatalogAdapter(str(tmp_path / "catalog.db"))
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     newer_event = make_event("evt-v2", new_price="2500.00", price_version=2, occurred_at=now)
     older_event = make_event(
@@ -68,7 +68,6 @@ def test_stale_price_version_does_not_overwrite_newer_price(tmp_path):
     )
 
     assert adapter.apply_price_update(newer_event) is True
-    # Событие с меньшей priceVersion=1 не должно перезаписать priceVersion=2
     adapter.apply_price_update(older_event)
 
     product = adapter.get_product("SKU-001")

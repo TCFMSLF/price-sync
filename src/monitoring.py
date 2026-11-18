@@ -1,9 +1,9 @@
+from collections.abc import Callable
+from dataclasses import dataclass, field
 import json
 import logging
 import os
 import urllib.request
-from dataclasses import dataclass, field
-from typing import Callable
 
 logger = logging.getLogger("price-monitoring")
 
@@ -11,6 +11,7 @@ logger = logging.getLogger("price-monitoring")
 @dataclass
 class AlertConfig:
     """Настраиваемые пороги и канал уведомлений (п. 5.7 ИЗ)."""
+
     max_latency_ms: float = float(os.getenv("MAX_LATENCY_MS", "200.0"))
     max_consumer_lag: int = int(os.getenv("MAX_CONSUMER_LAG", "100"))
     webhook_url: str | None = os.getenv("ALERT_WEBHOOK_URL") or None
@@ -68,12 +69,14 @@ class PriceSyncMonitor:
 
         if latency_ms > self.config.max_latency_ms:
             self.send_alert(
-                f"Превышена целевая задержка синхронизации: {latency_ms:.1f} ms > {self.config.max_latency_ms:.1f} ms"
+                f"Превышена целевая задержка синхронизации: {latency_ms:.1f} ms > "
+                f"{self.config.max_latency_ms:.1f} ms"
             )
 
         if consumer_lag > self.config.max_consumer_lag:
             self.send_alert(
-                f"Рост consumer lag: lag={consumer_lag} сообщений > порога {self.config.max_consumer_lag}"
+                f"Рост consumer lag: lag={consumer_lag} сообщений > "
+                f"порога {self.config.max_consumer_lag}"
             )
 
     def record_error(self) -> None:

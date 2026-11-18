@@ -1,7 +1,8 @@
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+
 from src.catalog_adapter import CatalogAdapter, SQLiteCatalogAdapter
 from src.consumer import process_message
 from src.models import PriceChangedEvent
@@ -47,7 +48,7 @@ class FailingCatalogAdapter(CatalogAdapter):
 
 
 def make_raw_event(event_id: str = "evt-100", latency_ms: float = 10.0) -> dict:
-    occurred_at = datetime.now(timezone.utc) - timedelta(milliseconds=latency_ms)
+    occurred_at = datetime.now(UTC) - timedelta(milliseconds=latency_ms)
     return {
         "eventId": event_id,
         "eventType": "price.changed",

@@ -1,8 +1,10 @@
+from datetime import UTC, datetime
 import json
 import logging
 import os
-from datetime import datetime, timezone
+
 from confluent_kafka import Consumer, KafkaError, TopicPartition
+
 from .catalog_adapter import CatalogAdapter, PostgresCatalogAdapter
 from .models import PriceChangedEvent
 from .monitoring import PriceSyncMonitor
@@ -50,9 +52,7 @@ def process_message(
         # Ручной commit offset строго после успешной фиксации изменений в БД
         consumer.commit(message=msg, asynchronous=False)
 
-        latency_ms = (
-            datetime.now(timezone.utc) - event.occurredAt
-        ).total_seconds() * 1000
+        latency_ms = (datetime.now(UTC) - event.occurredAt).total_seconds() * 1000
         consumer_lag = calculate_consumer_lag(consumer, msg)
 
         monitor.record_success(
@@ -63,7 +63,8 @@ def process_message(
 
         if applied:
             logger.info(
-                "Цена обновлена: product=%s new_price=%.2f %s (v%d) | latency=%.1f ms | lag=%d | corr=%s",
+                "Цена обновлена: product=%s new_price=%.2f %s (v%d) | "
+                "latency=%.1f ms | lag=%d | corr=%s",
                 event.payload.productId,
                 event.payload.newPrice,
                 event.payload.currency,
@@ -109,7 +110,7 @@ def run_consumer(
         "bootstrap.servers": bootstrap_servers,
         "group.id": group_id,
         "auto.offset.reset": "earliest",
-        "enable.auto.commit": False,  # Ручной commit offset только после БД
+        "enable.auto.commit": False,
     }
 
     consumer = Consumer(conf)
