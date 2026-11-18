@@ -1,30 +1,50 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Literal
-
-from pydantic import BaseModel, Field, field_validator
 
 
-class PricePayload(BaseModel):
-    productId: str = Field(min_length=1)
-    oldPrice: Decimal | None = Field(default=None, ge=Decimal("0.00"))
-    newPrice: Decimal = Field(gt=Decimal("0.00"))
-    currency: str = Field(pattern=r"^[A-Z]{3}$")
-    priceVersion: int = Field(default=1, ge=1)
+@dataclass
+class PricePayload:
+    productId: str
+    newPrice: Decimal
+    currency: str
+    oldPrice: Decimal | None = None
+    priceVersion: int = 1
 
 
-class PriceChangedEvent(BaseModel):
-    eventId: str = Field(min_length=1)
-    eventType: Literal["price.changed"]
-    schemaVersion: int = Field(default=1, ge=1)
+@dataclass
+class PriceChangedEvent:
+    eventId: str
+    eventType: str
+    schemaVersion: int
     occurredAt: datetime
-    correlationId: str = Field(min_length=1)
-    source: str = Field(min_length=1)
+    correlationId: str
+    source: str
     payload: PricePayload
 
-    @field_validator("occurredAt")
     @classmethod
-    def ensure_utc(cls, value: datetime) -> datetime:
-        if value.tzinfo is None:
-            return value.replace(tzinfo=UTC)
-        return value.astimezone(UTC)
+    def model_validate(cls, data: dict) -> "PriceChangedEvent":
+        p = data["payload"]
+        old_p = Decimal(str(p["oldPrice"])) if p.get("oldPrice") is not None else None
+        occurred = datetime.fromisoformat(data["occurredAt"].replace("Z", "+00:00"))
+        if occurred.tzinfo is None:
+            occurred = occurred.replace(tzinfo=UTC)
+        else:
+            occurred = occurred.astimezone(UTC)
+
+        payload = PricePayload(
+            productId=p["productId"],
+            oldPrice=old_p,
+            newPrice=Decimal(str(p["newPrice"])),
+            currency=p["currency"],
+            priceVersion=int(p.get("priceVersion", 1)),
+        )
+        return cls(
+            eventId=data["eventId"],
+            eventType=data["eventType"],
+            schemaVersion=int(data.get("schemaVersion", 1)),
+            occurredAt=occurred,
+            correlationId=data.get("correlationId", ""),
+            source=data.get("source", "erp-sim"),
+            payload=payload,
+        )
