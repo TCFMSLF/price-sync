@@ -5,10 +5,13 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
+from confluent_kafka import Consumer, TopicPartition
 from pydantic import ValidationError
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import sessionmaker
 
+from catalog.config import settings
+from catalog.db import SessionLocal
 from catalog.models import FailedEvent
 from catalog.schemas import PriceChangedEvent
 from catalog.service import InvalidMessageError, ProductNotFoundError, process_event
@@ -137,3 +140,89 @@ def process_message(
         last_error,
         attempts=max_attempts,
     )
+
+
+def consume_once(
+    consumer,
+    session_factory: sessionmaker,
+    timeout: float = 1.0,
+    max_attempts: int | None = None,
+    retry_delay: float | None = None,
+) -> ProcessMessageResult | None:
+    attempts = settings.consumer_max_attempts if max_attempts is None else max_attempts
+    delay = settings.consumer_retry_delay_seconds if retry_delay is None else retry_delay
+
+    message = consumer.poll(timeout)
+    if message is None:
+        return None
+    if message.error() is not None:
+        logger.warning("consumer error: %s", message.error())
+        return None
+
+    key_bytes = message.key()
+    incoming = IncomingMessage(
+        topic=message.topic(),
+        partition=message.partition(),
+        kafka_offset=message.offset(),
+        key=key_bytes.decode("utf-8") if key_bytes is not None else None,
+        value=(message.value() or b"").decode("utf-8", errors="replace"),
+    )
+
+    try:
+        result = process_message(
+            session_factory,
+            incoming,
+            max_attempts=attempts,
+            retry_delay=delay,
+        )
+    except Exception:
+        logger.exception(
+            "failed to record %s/%d/%d; offset not committed",
+            incoming.topic,
+            incoming.partition,
+            incoming.kafka_offset,
+        )
+        time.sleep(delay)
+        consumer.seek(TopicPartition(incoming.topic, incoming.partition, incoming.kafka_offset))
+        return None
+
+    consumer.commit(message=message, asynchronous=False)
+    return result
+
+
+def run_forever(consumer, session_factory: sessionmaker) -> None:
+    try:
+        while True:
+            consume_once(consumer, session_factory)
+    except KeyboardInterrupt:
+        logger.info("consumer stopped")
+    finally:
+        consumer.close()
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    consumer = Consumer(
+        {
+            "bootstrap.servers": settings.kafka_bootstrap_servers,
+            "group.id": settings.kafka_consumer_group,
+            "client.id": settings.kafka_consumer_group,
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": False,
+            "enable.auto.offset.store": False,
+        }
+    )
+    consumer.subscribe([settings.kafka_topic_price_updates])
+    logger.info(
+        "catalog consumer started: topic=%s group=%s",
+        settings.kafka_topic_price_updates,
+        settings.kafka_consumer_group,
+    )
+    run_forever(consumer, SessionLocal)
+
+
+if __name__ == "__main__":
+    main()
