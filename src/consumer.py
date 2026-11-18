@@ -12,7 +12,14 @@ try:
 except ImportError:
     Consumer = None
     KafkaError = None
-    TopicPartition = None
+
+    class TopicPartition:  # type: ignore[no-redef]
+        """Заглушка для корректного расчёта consumer lag в тестах без confluent_kafka."""
+
+        def __init__(self, topic: str, partition: int) -> None:
+            self.topic = topic
+            self.partition = partition
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,8 +30,6 @@ logger = logging.getLogger("price-consumer")
 
 def calculate_consumer_lag(consumer, msg) -> int:
     """Вычисляет отставание consumer от конца партиции (consumer lag)."""
-    if TopicPartition is None:
-        return 0
     try:
         _, high = consumer.get_watermark_offsets(
             TopicPartition(msg.topic(), msg.partition()),
