@@ -4,9 +4,6 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from decimal import Decimal
 
-import psycopg
-from psycopg.rows import dict_row
-
 from .models import PriceChangedEvent
 
 
@@ -26,6 +23,14 @@ class CatalogAdapter(ABC):
 
 class PostgresCatalogAdapter(CatalogAdapter):
     def __init__(self, dsn: str | None = None) -> None:
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+        except ImportError as exc:
+            raise RuntimeError(
+                "Для работы требуется psycopg: pip install 'psycopg[binary]'"
+            ) from exc
+
         self.dsn = dsn or os.getenv(
             "DATABASE_URL",
             "postgresql://catalog:catalog@localhost:5432/catalog_db",
