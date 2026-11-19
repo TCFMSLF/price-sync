@@ -9,7 +9,7 @@
 ## Ожидаемый результат
 
 - события не теряются: outbox, at-least-once, идемпотентный consumer;
-- end-to-end latency p95 около 85 мс на локальном демо;
+- end-to-end latency p95 около 95 мс на локальном демо;
 - цена в каталоге обновляется в реальном времени
 
 Проверка задержки: `uv run python scripts/demo.py measure --count 30`.
