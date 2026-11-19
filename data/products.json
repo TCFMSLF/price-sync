@@ -1,0 +1,23 @@
+[
+  {
+    "id": "SKU-001",
+    "name": "Кофе в зернах, 1 кг",
+    "price": "1299.00",
+    "currency": "RUB",
+    "priceVersion": 1
+  },
+  {
+    "id": "SKU-002",
+    "name": "Чай черный, 500 г",
+    "price": "799.00",
+    "currency": "RUB",
+    "priceVersion": 1
+  },
+  {
+    "id": "SKU-003",
+    "name": "Какао, 250 г",
+    "price": "499.00",
+    "currency": "RUB",
+    "priceVersion": 1
+  }
+]

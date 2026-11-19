@@ -7,8 +7,9 @@
   "source": "erp-sim",
   "payload": {
     "productId": "SKU-001",
-    "oldPrice": 1999.0,
-    "newPrice": 1799.0,
+    "priceVersion": 2,
+    "oldPrice": "1999.00",
+    "newPrice": "1799.00",
     "currency": "RUB"
   }
 }

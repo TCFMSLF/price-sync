@@ -17,46 +17,62 @@
   "properties": {
     "eventId": {
       "type": "string",
-      "format": "uuid"
+      "format": "uuid",
+      "description": "Уникальный идентификатор события, ключ дедупликации"
     },
     "eventType": {
-      "const": "price.changed"
+      "const": "price.changed",
+      "description": "Тип события"
     },
     "schemaVersion": {
-      "const": 1
+      "const": 1,
+      "description": "Версия контракта события"
     },
     "occurredAt": {
       "type": "string",
-      "format": "date-time"
+      "format": "date-time",
+      "description": "Время изменения цены в UTC, RFC 3339"
     },
     "correlationId": {
       "type": "string",
-      "format": "uuid"
+      "format": "uuid",
+      "description": "Идентификатор запроса для трассировки"
     },
     "source": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "Система-источник события"
     },
     "payload": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["productId", "oldPrice", "newPrice", "currency"],
+      "required": ["productId", "priceVersion", "oldPrice", "newPrice", "currency"],
       "properties": {
         "productId": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "description": "Идентификатор товара, ключ сообщения Kafka"
+        },
+        "priceVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647,
+          "description": "Новая версия цены товара, монотонно возрастает при каждом изменении"
         },
         "oldPrice": {
-          "type": "number",
-          "minimum": 0
+          "type": "string",
+          "pattern": "^\\d{1,10}\\.\\d{2}$",
+          "description": "Цена до изменения, строка с двумя знаками после запятой"
         },
         "newPrice": {
-          "type": "number",
-          "minimum": 0
+          "type": "string",
+          "pattern": "^\\d{1,10}\\.\\d{2}$",
+          "description": "Цена после изменения, строка с двумя знаками после запятой"
         },
         "currency": {
           "type": "string",
-          "pattern": "^[A-Z]{3}$"
+          "pattern": "^[A-Z]{3}$",
+          "description": "Валюта, три заглавные буквы"
         }
       }
     }
