@@ -1,4 +1,4 @@
-.PHONY: up down reset logs ps test test-integration lint format seed
+.PHONY: up down reset logs ps test test-integration lint format seed erp-api
 
 up:
 	docker compose up -d
@@ -23,6 +23,9 @@ test-integration:
 
 seed:
 	uv run --package erp-sim python -m erp_sim.seed
+
+erp-api:
+	uv run --package erp-sim uvicorn erp_sim.api:app --reload --port 8000
 
 lint:
 	uv run ruff check .

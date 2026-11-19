@@ -1,13 +1,17 @@
 import os
 from collections.abc import Iterator
+from decimal import Decimal
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 TEST_DATABASE_URL = "postgresql+psycopg://price_sync:price_sync@localhost:5433/erp_test"
 ADMIN_DATABASE_URL = "postgresql+psycopg://price_sync:price_sync@localhost:5433/postgres"
+
+os.environ.setdefault("ERP_DATABASE_URL", TEST_DATABASE_URL)
 
 
 def _ensure_test_database() -> None:
@@ -39,10 +43,45 @@ def db_engine() -> Iterator[Engine]:
 
 
 @pytest.fixture()
-def db_session(db_engine: Engine) -> Iterator[Session]:
-    session_factory = sessionmaker(bind=db_engine, expire_on_commit=False)
+def session_factory(db_engine: Engine) -> sessionmaker:
+    return sessionmaker(bind=db_engine, expire_on_commit=False)
+
+
+@pytest.fixture()
+def db_session(session_factory: sessionmaker, db_engine: Engine) -> Iterator[Session]:
     with session_factory() as session:
         yield session
         session.rollback()
     with db_engine.begin() as connection:
         connection.execute(text("TRUNCATE TABLE outbox, products"))
+
+
+@pytest.fixture()
+def api_client(session_factory: sessionmaker) -> Iterator[TestClient]:
+    from erp_sim.api import app, get_session
+
+    def override_get_session() -> Iterator[Session]:
+        with session_factory() as session:
+            yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    client = TestClient(app)
+    try:
+        yield client
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def sample_product(db_session: Session):
+    from erp_sim.models import Product
+
+    product = Product(
+        id="SKU-001",
+        name="Кофе в зернах, 1 кг",
+        price=Decimal("1299.00"),
+        currency="RUB",
+    )
+    db_session.add(product)
+    db_session.commit()
+    return product

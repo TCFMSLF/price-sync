@@ -10,6 +10,7 @@ members = ["services/*"]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "jsonschema>=4.26.0",
     "pytest>=8.0",
     "ruff>=0.6",
