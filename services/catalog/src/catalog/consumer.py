@@ -210,7 +210,11 @@ def run_forever(consumer, session_factory: sessionmaker) -> None:
     try:
         while True:
             try:
-                consume_once(consumer, session_factory)
+                consume_once(
+                    consumer,
+                    session_factory,
+                    timeout=settings.consumer_poll_timeout_seconds,
+                )
             except Exception:
                 logger.exception("consumer loop error; retrying")
                 time.sleep(settings.consumer_retry_delay_seconds)

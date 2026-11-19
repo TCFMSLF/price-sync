@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 from catalog import consumer as consumer_module
+from catalog.config import settings
 from catalog.consumer import ProcessMessageResult, consume_once, run_forever
 
 
@@ -186,6 +187,21 @@ def test_run_forever_survives_transient_poll_error(monkeypatch):
     run_forever(consumer, object())
 
     assert consumer.closed is True
+
+
+def test_run_forever_uses_configured_poll_timeout(monkeypatch):
+    consumer = FakeConsumer([], stop_after=True)
+    captured = []
+
+    def fake_consume_once(consumer, session_factory, timeout=1.0, **kwargs):
+        captured.append(timeout)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(consumer_module, "consume_once", fake_consume_once)
+
+    run_forever(consumer, object())
+
+    assert captured == [settings.consumer_poll_timeout_seconds]
 
 
 def test_main_initializes_database(monkeypatch):
