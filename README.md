@@ -12,4 +12,26 @@
 - end-to-end latency p95 около 200 мс на локальном демо;
 - цена в каталоге обновляется в реальном времени
 
+## Запуск
+
+```bash
+make install
+make demo-reset
+```
+
+В отдельных терминалах:
+
+```bash
+make erp-api
+make erp-publisher
+make catalog-api
+make catalog-consumer
+```
+
+ERP API: http://localhost:8000, каталог: http://localhost:8001,
+Kafka UI: http://localhost:8080, PostgreSQL: localhost:5433.
+
+Повторный запуск с чистого состояния: `make demo-reset`. Команда удаляет
+тома PostgreSQL и Kafka, затем заново применяет seed.
+
 

@@ -1,7 +1,18 @@
-.PHONY: up down reset logs ps test test-integration lint format seed erp-api erp-publisher erp-publisher-once catalog-seed catalog-consumer catalog-api
+.PHONY: install up down reset demo-reset logs ps test test-integration lint format seed erp-api erp-publisher erp-publisher-once catalog-seed catalog-consumer catalog-api
+
+install:
+	uv sync --all-packages --locked
 
 up:
-	docker compose up -d
+	docker compose up -d --wait postgres kafka
+	docker compose up -d kafka-ui kafka-init
+	docker compose wait kafka-init
+
+demo-reset:
+	$(MAKE) reset
+	$(MAKE) up
+	$(MAKE) seed
+	$(MAKE) catalog-seed
 
 down:
 	docker compose down
