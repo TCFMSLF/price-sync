@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Имитация ERP с transactional outbox"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "confluent-kafka>=2.16.1",
     "fastapi>=0.163.1",
     "psycopg[binary]>=3.3.9",
     "pydantic>=2.14.3",

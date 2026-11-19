@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 TEST_DATABASE_URL = "postgresql+psycopg://price_sync:price_sync@localhost:5433/erp_test"
 ADMIN_DATABASE_URL = "postgresql+psycopg://price_sync:price_sync@localhost:5433/postgres"
+KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
 
 os.environ.setdefault("ERP_DATABASE_URL", TEST_DATABASE_URL)
 
@@ -85,3 +86,23 @@ def sample_product(db_session: Session):
     db_session.add(product)
     db_session.commit()
     return product
+
+
+@pytest.fixture()
+def kafka_topic() -> Iterator[str]:
+    if os.getenv("RUN_INTEGRATION") != "1":
+        pytest.skip("integration tests disabled; set RUN_INTEGRATION=1")
+
+    from uuid import uuid4
+
+    from confluent_kafka.admin import AdminClient, NewTopic
+
+    topic = f"price-updates-test-{uuid4()}"
+    admin = AdminClient({"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS})
+    futures = admin.create_topics([NewTopic(topic, num_partitions=3, replication_factor=1)])
+    futures[topic].result(timeout=10)
+    try:
+        yield topic
+    finally:
+        futures = admin.delete_topics([topic])
+        futures[topic].result(timeout=10)

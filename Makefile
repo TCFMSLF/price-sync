@@ -1,4 +1,4 @@
-.PHONY: up down reset logs ps test test-integration lint format seed erp-api
+.PHONY: up down reset logs ps test test-integration lint format seed erp-api erp-publisher erp-publisher-once
 
 up:
 	docker compose up -d
@@ -26,6 +26,12 @@ seed:
 
 erp-api:
 	uv run --package erp-sim uvicorn erp_sim.api:app --reload --port 8000
+
+erp-publisher:
+	uv run --package erp-sim python -m erp_sim.publisher
+
+erp-publisher-once:
+	uv run --package erp-sim python -m erp_sim.publisher --once
 
 lint:
 	uv run ruff check .
