@@ -53,6 +53,8 @@ def run_loop(monkeypatch, outcomes: list) -> tuple[list[float], list[FakeSession
     monkeypatch.setattr(publisher, "SessionLocal", session_factory)
     monkeypatch.setattr(publisher, "publish_pending", fake_publish_pending)
     monkeypatch.setattr(publisher.time, "sleep", fake_sleep)
+    monkeypatch.setattr(publisher.settings, "outbox_poll_interval_seconds", 1.0)
+    monkeypatch.setattr(publisher.settings, "outbox_retry_max_seconds", 30.0)
 
     publisher.run_forever(object())
     return sleeps, sessions

@@ -91,7 +91,7 @@ def _record_failure(
         attempts=attempts,
     )
     logger.warning(
-        "event at %s/%d/%d failed: %s",
+        "event at %s/%d/%d failed permanently: %s",
         incoming.topic,
         incoming.partition,
         incoming.kafka_offset,
@@ -133,13 +133,7 @@ def process_message(
         except Exception as retry_error:
             last_error = retry_error
 
-    return _record_failure(
-        session_factory,
-        incoming,
-        event,
-        last_error,
-        attempts=max_attempts,
-    )
+    raise last_error
 
 
 def _seek_back(consumer, incoming: IncomingMessage, delay: float) -> None:
@@ -210,7 +204,11 @@ def run_forever(consumer, session_factory: sessionmaker) -> None:
     try:
         while True:
             try:
-                consume_once(consumer, session_factory)
+                consume_once(
+                    consumer,
+                    session_factory,
+                    timeout=settings.consumer_poll_timeout_seconds,
+                )
             except Exception:
                 logger.exception("consumer loop error; retrying")
                 time.sleep(settings.consumer_retry_delay_seconds)
