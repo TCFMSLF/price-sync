@@ -91,7 +91,7 @@ def _record_failure(
         attempts=attempts,
     )
     logger.warning(
-        "event at %s/%d/%d failed: %s",
+        "event at %s/%d/%d failed permanently: %s",
         incoming.topic,
         incoming.partition,
         incoming.kafka_offset,
@@ -133,13 +133,9 @@ def process_message(
         except Exception as retry_error:
             last_error = retry_error
 
-    return _record_failure(
-        session_factory,
-        incoming,
-        event,
-        last_error,
-        attempts=max_attempts,
-    )
+    # При сбое БД не коммитим смещение в Kafka и не сбрасываем в failed_events,
+    # а пробрасываем ошибку для автоматического повтора после восстановления БД
+    raise last_error
 
 
 def _seek_back(consumer, incoming: IncomingMessage, delay: float) -> None:
@@ -194,7 +190,7 @@ def consume_once(
         consumer.commit(message=message, asynchronous=False)
     except Exception:
         logger.exception(
-            "failed to process or commit %s/%d/%d; offset not committed",
+            "failed to process %s/%d/%d; offset not committed, retrying",
             incoming.topic,
             incoming.partition,
             incoming.kafka_offset,
