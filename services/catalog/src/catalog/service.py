@@ -50,7 +50,12 @@ def process_event(
 
     processed_at = datetime.now(UTC)
     latency_ms = max(0, int((processed_at - event.occurredAt).total_seconds() * 1000))
-    applied = event.payload.priceVersion > product.price_version
+
+    # Проверка валюты: если валюта события не совпадает с товаром, цена и версия не меняются
+    applied = (
+        event.payload.currency == product.currency
+        and event.payload.priceVersion > product.price_version
+    )
     if applied:
         product.price = event.payload.newPrice
         product.price_version = event.payload.priceVersion
