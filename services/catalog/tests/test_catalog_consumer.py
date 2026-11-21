@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 from catalog import consumer as consumer_module
 from catalog.consumer import IncomingMessage, process_message
-from catalog.models import FailedEvent, ProcessedEvent
+from catalog.models import FailedEvent, ProcessedEvent, Product
 from catalog.schemas import PriceChangedEvent, PriceChangedPayload
 from catalog.service import ProductNotFoundError
 from catalog.service import process_event as real_process_event
@@ -84,6 +84,27 @@ def test_process_message_records_stale_event(
     assert processed.applied is False
 
 
+def test_process_message_ignores_currency_mismatch(
+    session_factory: sessionmaker, sample_product, db_session: Session
+):
+    original_price = sample_product.price
+    original_version = sample_product.price_version
+    original_currency = sample_product.currency
+
+    event = make_event(price_version=99, new_price="10.00")
+    event.payload.currency = "BYN" if original_currency != "BYN" else "KZT"
+
+    result = process_message(session_factory, make_incoming(event), max_attempts=3, retry_delay=0)
+
+    assert result.status == "stale"
+    db_session.expire_all()
+    product = db_session.get(Product, sample_product.id)
+    assert product is not None
+    assert product.price == original_price
+    assert product.price_version == original_version
+    assert product.currency == original_currency
+
+
 def test_process_message_records_invalid_json(
     session_factory: sessionmaker, sample_product, db_session: Session
 ):
@@ -149,7 +170,7 @@ def test_process_message_retries_transient_error_then_succeeds(
     assert len(calls) == 2
 
 
-def test_process_message_records_failed_event_after_retries(
+def test_process_message_raises_on_transient_error_after_retries(
     session_factory: sessionmaker, sample_product, db_session: Session, monkeypatch
 ):
     calls = []
@@ -160,16 +181,16 @@ def test_process_message_records_failed_event_after_retries(
 
     monkeypatch.setattr(consumer_module, "process_event", always_fails)
 
-    result = process_message(
-        session_factory, make_incoming(make_event()), max_attempts=3, retry_delay=0
-    )
+    incoming = make_incoming(make_event())
+    with pytest.raises(RuntimeError, match="db unavailable"):
+        process_message(session_factory, incoming, max_attempts=3, retry_delay=0)
 
-    assert result.status == "failed"
     assert len(calls) == 3
-    failed = db_session.scalar(select(FailedEvent))
-    assert failed is not None
-    assert failed.attempts == 3
-    assert "db unavailable" in failed.error
+    assert db_session.scalar(select(FailedEvent)) is None
+
+    monkeypatch.setattr(consumer_module, "process_event", real_process_event)
+    recovered = process_message(session_factory, incoming, max_attempts=3, retry_delay=0)
+    assert recovered.status == "applied"
 
 
 def test_process_message_does_not_retry_permanent_error(

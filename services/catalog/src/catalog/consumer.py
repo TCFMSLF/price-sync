@@ -91,7 +91,7 @@ def _record_failure(
         attempts=attempts,
     )
     logger.warning(
-        "event at %s/%d/%d failed: %s",
+        "event at %s/%d/%d failed permanently: %s",
         incoming.topic,
         incoming.partition,
         incoming.kafka_offset,
@@ -133,13 +133,7 @@ def process_message(
         except Exception as retry_error:
             last_error = retry_error
 
-    return _record_failure(
-        session_factory,
-        incoming,
-        event,
-        last_error,
-        attempts=max_attempts,
-    )
+    raise last_error
 
 
 def _seek_back(consumer, incoming: IncomingMessage, delay: float) -> None:
@@ -191,22 +185,10 @@ def consume_once(
             max_attempts=attempts,
             retry_delay=delay,
         )
-        # Если обработка не удалась, НЕ коммитим offset, а возвращаем назад для повтора
-        if result.status == "failed":
-            logger.warning(
-                "failed to process %s/%d/%d; offset not committed, retrying",
-                incoming.topic,
-                incoming.partition,
-                incoming.kafka_offset,
-            )
-            time.sleep(delay)
-            _seek_back(consumer, incoming, delay)
-            return result
-
         consumer.commit(message=message, asynchronous=False)
     except Exception:
         logger.exception(
-            "failed to process %s/%d/%d; offset not committed, retrying",
+            "failed to process or commit %s/%d/%d; offset not committed",
             incoming.topic,
             incoming.partition,
             incoming.kafka_offset,
