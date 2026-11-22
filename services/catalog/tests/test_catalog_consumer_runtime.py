@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 from catalog import consumer as consumer_module
+from catalog.config import settings
 from catalog.consumer import ProcessMessageResult, consume_once, run_forever
 
 
@@ -162,7 +163,7 @@ def test_run_forever_closes_consumer_on_keyboard_interrupt(monkeypatch):
         lambda *args, **kwargs: ProcessMessageResult(event_id=uuid4(), status="applied"),
     )
 
-    run_forever(consumer, object())
+    run_forever(lambda: consumer, object())
 
     assert consumer.commits == [message]
     assert consumer.closed is True
@@ -183,9 +184,62 @@ def test_run_forever_survives_transient_poll_error(monkeypatch):
     consumer = FlakyConsumer()
     monkeypatch.setattr(consumer_module.time, "sleep", lambda delay: None)
 
-    run_forever(consumer, object())
+    run_forever(lambda: consumer, object())
 
     assert consumer.closed is True
+
+
+def test_run_forever_uses_configured_poll_timeout(monkeypatch):
+    consumer = FakeConsumer([], stop_after=True)
+    captured = []
+
+    def fake_consume_once(consumer, session_factory, timeout=1.0, **kwargs):
+        captured.append(timeout)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(consumer_module, "consume_once", fake_consume_once)
+
+    run_forever(lambda: consumer, object())
+
+    assert captured == [settings.consumer_poll_timeout_seconds]
+
+
+def test_run_forever_recreates_consumer_when_stalled(monkeypatch):
+    class StalledConsumer(FakeConsumer):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.empty_polls = 0
+
+        def poll(self, timeout):
+            self.empty_polls += 1
+            if self.empty_polls > 20:
+                raise KeyboardInterrupt
+            return None
+
+    stalled = StalledConsumer()
+    recovered = FakeConsumer([FakeMessage(offset=12)], stop_after=True)
+    factory = iter([stalled, recovered]).__next__
+    monkeypatch.setattr(
+        consumer_module,
+        "process_message",
+        lambda *args, **kwargs: ProcessMessageResult(event_id=uuid4(), status="applied"),
+    )
+    monkeypatch.setattr(consumer_module.time, "sleep", lambda delay: None)
+    monkeypatch.setattr(settings, "consumer_stall_timeout_seconds", 0.05)
+    clock = [0.0]
+
+    def fake_monotonic() -> float:
+        clock[0] += 0.01
+        if clock[0] > 5:
+            raise KeyboardInterrupt
+        return clock[0]
+
+    monkeypatch.setattr(consumer_module.time, "monotonic", fake_monotonic)
+
+    run_forever(factory, object())
+
+    assert stalled.closed is True
+    assert [message.offset() for message in recovered.commits] == [12]
 
 
 def test_main_initializes_database(monkeypatch):
@@ -208,4 +262,4 @@ def test_main_initializes_database(monkeypatch):
 
     consumer_module.main()
 
-    assert calls == ["init", "subscribe", "run"]
+    assert calls == ["init", "run"]

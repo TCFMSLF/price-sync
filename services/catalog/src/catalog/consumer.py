@@ -1,5 +1,6 @@
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
@@ -91,7 +92,7 @@ def _record_failure(
         attempts=attempts,
     )
     logger.warning(
-        "event at %s/%d/%d failed: %s",
+        "event at %s/%d/%d failed permanently: %s",
         incoming.topic,
         incoming.partition,
         incoming.kafka_offset,
@@ -133,13 +134,7 @@ def process_message(
         except Exception as retry_error:
             last_error = retry_error
 
-    return _record_failure(
-        session_factory,
-        incoming,
-        event,
-        last_error,
-        attempts=max_attempts,
-    )
+    raise last_error
 
 
 def _seek_back(consumer, incoming: IncomingMessage, delay: float) -> None:
@@ -206,14 +201,44 @@ def consume_once(
     return result
 
 
-def run_forever(consumer, session_factory: sessionmaker) -> None:
+def create_consumer() -> Consumer:
+    consumer = Consumer(
+        {
+            "bootstrap.servers": settings.kafka_bootstrap_servers,
+            "group.id": settings.kafka_consumer_group,
+            "client.id": settings.kafka_consumer_group,
+            "auto.offset.reset": "earliest",
+            "enable.auto.commit": False,
+            "enable.auto.offset.store": False,
+        }
+    )
+    consumer.subscribe([settings.kafka_topic_price_updates])
+    return consumer
+
+
+def run_forever(consumer_factory: Callable[[], Consumer], session_factory: sessionmaker) -> None:
+    consumer = consumer_factory()
+    last_progress = time.monotonic()
     try:
         while True:
             try:
-                consume_once(consumer, session_factory)
+                result = consume_once(
+                    consumer,
+                    session_factory,
+                    timeout=settings.consumer_poll_timeout_seconds,
+                )
             except Exception:
                 logger.exception("consumer loop error; retrying")
                 time.sleep(settings.consumer_retry_delay_seconds)
+                result = None
+            if result is not None:
+                last_progress = time.monotonic()
+            if time.monotonic() - last_progress < settings.consumer_stall_timeout_seconds:
+                continue
+            logger.warning("consumer stalled; recreating consumer")
+            consumer.close()
+            consumer = consumer_factory()
+            last_progress = time.monotonic()
     except KeyboardInterrupt:
         logger.info("consumer stopped")
     finally:
@@ -226,23 +251,12 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     init_db()
-    consumer = Consumer(
-        {
-            "bootstrap.servers": settings.kafka_bootstrap_servers,
-            "group.id": settings.kafka_consumer_group,
-            "client.id": settings.kafka_consumer_group,
-            "auto.offset.reset": "earliest",
-            "enable.auto.commit": False,
-            "enable.auto.offset.store": False,
-        }
-    )
-    consumer.subscribe([settings.kafka_topic_price_updates])
     logger.info(
         "catalog consumer started: topic=%s group=%s",
         settings.kafka_topic_price_updates,
         settings.kafka_consumer_group,
     )
-    run_forever(consumer, SessionLocal)
+    run_forever(create_consumer, SessionLocal)
 
 
 if __name__ == "__main__":
